@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cancer Prediction</title>
+
+    <!-- TensorFlow.js -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+
+    <!-- Own Styles -->
+    <link rel="stylesheet" href="static/src/styles/styles.css" />
+    <link rel="stylesheet" href="static/src/styles/responsive.css" />
+
+    <!-- Favicon -->
+    <link rel="shortcut icon" href="static/src/images/favicon.png" type="image/x-icon" />
+  </head>
+  <body>
+    <div id="app">
+      <nav>
+        <div class="nav-container">
+          <div class="container">
+            <div class="nav-content">
+              <div class="brand-name">
+                <a href="/">Cancer Disease Prediction</a>
+              </div>
+              <ul class="nav-list">
+                <li><a href="#">Home</a></li>
+                <li><a href="#">Pricing</a></li>
+                <li><a href="#">FAQ</a></li>
+                <li><a href="#">Terms</a></li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </nav>
+
+      <header>
+        <div class="container">
+          <div class="jumbotron">
+            <div class="inner-jumbotron">
+              <h2>Free Cancer Prediction</h2>
+              <p>Take advantage of free fast and reliable cancer image prediction now!</p>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main>
+        <div class="container">
+          <section>
+            <div class="section-title">
+              <h3>Cancer Prediction Form</h3>
+            </div>
+
+            <div class="predict-container">
+              <form id="predictForm" class="predict-form" enctype="multipart/form-data">
+                <div id="dropArea">
+                  <p>
+                    Please click "Select your picture" button or drag & drop your file
+                    to choose an image.
+                  </p>
+                  <input type="file" id="imageInput" name="image" accept="image/*" />
+                  <!--<label class="btn" id="skinFileLabel" for="imageInput">
+                    Select your picture
+                  </label>-->
+
+                  <div id="previewImg"></div>
+                </div>
+
+                <div class="submit-form">
+                  <button class="btn" id="predictBtn" type="button">Predict</button>
+                </div>
+              </form>
+
+              <div class="result-container">
+                <div id="waitingToPredicting">
+                  <img src="static/src/images/waiting.svg" alt="Waiting to predicting" />
+                  <p>Waiting to predict the image</p>
+                </div>
+                <div class="loading"></div>
+                <p id="predictionError"></p>
+                <div id="predictionResult"></div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </main>
+
+      <footer>
+        <div class="container">
+          <hr class="footer-divider" />
+          <div class="main-footer">
+            <div class="copyright">
+              © 2024 Cancer Prediction
+              <span class="px-1 text-muted">|</span>
+              An automated cancer detection system.
+            </div>
+            <div class="policies">
+              <a href="#" class="remove-style-link">Terms</a>
+              <span class="">•</span>
+              <a href="#" class="remove-style-link">Privacy</a>
+            </div>
+          </div>
+        </div>
+      </footer>
+    </div>
+
+    <script>
+      // File preview functionality
+      const dropArea = document.getElementById('dropArea');
+      const fileInput = document.getElementById('imageInput');
+      const previewDiv = document.getElementById('previewImg');
+
+      ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        dropArea.addEventListener(eventName, preventDefaults, false);
+      });
+
+      function preventDefaults(e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+
+      ['dragenter', 'dragover'].forEach(eventName => {
+        dropArea.addEventListener(eventName, highlight, false);
+      });
+
+      ['dragleave', 'drop'].forEach(eventName => {
+        dropArea.addEventListener(eventName, unhighlight, false);
+      });
+
+      function highlight(e) {
+        dropArea.classList.add('highlight');
+      }
+
+      function unhighlight(e) {
+        dropArea.classList.remove('highlight');
+      }
+
+      dropArea.addEventListener('drop', handleDrop, false);
+
+      function handleDrop(e) {
+        const dt = e.dataTransfer;
+        const files = dt.files;
+        fileInput.files = files;
+        updatePreview();
+      }
+
+      fileInput.addEventListener('change', updatePreview);
+
+      function updatePreview() {
+        const file = fileInput.files[0];
+        if (file) {
+          const img = document.createElement('img');
+          img.src = URL.createObjectURL(file);
+          previewDiv.innerHTML = '';
+          previewDiv.appendChild(img);
+        }
+      }
+
+      // TensorFlow prediction functionality
+      async function loadModel() {
+        //const modelPath = 'https://storage.googleapis.com/storage-cancer-prediction-tesis/model.json';
+        const modelPath = 'https://machinemodels.blob.core.windows.net/mlgcmodels/model.json';
+        try {
+          const model = await tf.loadGraphModel(modelPath);
+          return model;
+        } catch (error) {
+          console.error('Model loading error:', error);
+          document.getElementById('predictionError').textContent = 'Failed to load the model.';
+        }
+      }
+
+      async function predict() {
+        // Show loading state
+        document.getElementById('waitingToPredicting').style.display = 'none';
+        document.querySelector('.loading').style.display = 'block';
+        document.getElementById('predictionResult').style.display = 'none';
+        document.getElementById('predictionError').style.display = 'none';
+
+        const model = await loadModel();
+
+        if (!model) {
+          document.querySelector('.loading').style.display = 'none';
+          document.getElementById('predictionError').style.display = 'block';
+          return;
+        }
+
+        const file = fileInput.files[0];
+
+        if (!file) {
+          document.querySelector('.loading').style.display = 'none';
+          document.getElementById('predictionError').textContent = 'Please upload an image.';
+          document.getElementById('predictionError').style.display = 'block';
+          return;
+        }
+
+        const img = new Image();
+        img.src = URL.createObjectURL(file);
+
+        img.onload = async () => {
+          try {
+            const tensor = tf.browser.fromPixels(img)
+              .resizeNearestNeighbor([224, 224])
+              .expandDims(0)
+              .toFloat();
+            
+              const prediction = await model.predict(tensor);
+              const score = prediction.dataSync()[0];
+              const isCancer = score > 0.5;
+            const predictionResult = document.getElementById('predictionResult');
+            predictionResult.innerHTML = `
+              <div class="prediction-result">
+              <p class="result-title">Prediction Result:</p>
+              <div class="diagnosis" style="font-size: 1.25rem; font-weight: bold; margin: 1rem 0; color: ${isCancer ?  '#dc2626':'#16a34a'}">
+                ${isCancer ? 'Cancer Detected':'No Cancer Detected'}
+              </div>
+              <div class="confidence" style="margin-bottom: 1rem"> 
+                Confidence Score: ${(score * 100).toFixed(2)}%
+              </div>
+              <progress 
+                class="confidence-score" 
+                value="${score}" 
+                max="1" 
+                style="width: 100%; height: 20px; ${isCancer ?  '--progress-color: #dc2626':'--progress-color: #16a34a'}"
+              ></progress>
+            </div>
+            `;
+
+            // Hide loading, show result
+            document.querySelector('.loading').style.display = 'none';
+            predictionResult.style.display = 'block';
+          } catch (error) {
+            document.querySelector('.loading').style.display = 'none';
+            document.getElementById('predictionError').textContent = 'Error during prediction: ' + error.message;
+            document.getElementById('predictionError').style.display = 'block';
+          }
+        };
+      }
+
+      document.getElementById('predictBtn').addEventListener('click', predict);
+    </script>
+  </body>
+</html>
